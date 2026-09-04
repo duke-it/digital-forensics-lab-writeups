@@ -8,16 +8,16 @@ Chaque lab est traité comme une véritable investigation : reconstitution de la
 
 | # | Lab | Thématique | Techniques couvertes | Statut |
 |---|---|---|---|---|
-| 01 | *(à compléter)* | | | ⏳ |
-| 02 | *(à compléter)* | | | ⏳ |
-| 03 | *(à compléter)* | | | ⏳ |
+| 01 | — | — | — | ⏳ |
+| 02 | — | — | — | ⏳ |
+| 03 | — | — | — | ⏳ |
 | 04 | [Applications Web & journaux WAF](./Lab-04-web-waf-logs/) | Compromission d'un serveur Apache via LFI, RCE et SQLi ; analyse croisée `access.log` / `error.log` / `modsec_audit.log` | Path Traversal, Remote Command Execution, SQL Injection, ModSecurity/OWASP CRS, Docker | ✅ |
-| 05 | *(à compléter)* | | | ⏳ |
-| 06 | *(à compléter)* | | | ⏳ |
-| 07 | *(à compléter)* | | | ⏳ |
-| 08 | *(à compléter)* | | | ⏳ |
-| 09 | *(à compléter)* | | | ⏳ |
-| 10 | *(à compléter)* | | | ⏳ |
+| 05 | — | — | — | ⏳ |
+| 06 | — | — | — | ⏳ |
+| 07 | — | — | — | ⏳ |
+| 08 | — | — | — | ⏳ |
+| 09 | — | — | — | ⏳ |
+| 10 | — | — | — | ⏳ |
 
 ## Source
 
