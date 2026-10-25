@@ -1,0 +1,23 @@
+# Ne jamais publier les fichiers bruts des labs (macros, malwares, dumps)
+**/files/
+**/_samples/
+*.zip
+*.docm
+*.pptm
+*.xlsm
+*.exe
+*.dll
+*.bin
+*.dmp
+*.mem
+*.raw
+*.E01
+*.pcap
+*.pcapng
+*.evtx
+
+# Divers
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
