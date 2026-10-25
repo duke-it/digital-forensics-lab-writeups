@@ -1,7 +1,7 @@
 # Lab 03 — Analyse de documents & Stéganographie
 
 > Write-up de la série sur le dépôt [vonderchild/digital-forensics-lab](https://github.com/vonderchild/digital-forensics-lab).
-> Chaque exercice est traité comme une investigation : démarche, outils et raisonnement — pas seulement la réponse.
+> Chaque exercice est traité comme une investigation : démarche, outils et raisonnement pas seulement la réponse.
 
 Ce lab couvre les documents piégés et la stéganographie sous trois formes : une **macro VBA malveillante**, une **image dissimulée dans un PowerPoint** (métadonnées + payload caché), et un **message caché dans un fichier audio**.
 
@@ -9,12 +9,12 @@ Ce lab couvre les documents piégés et la stéganographie sous trois formes : u
 
 | Étape | Outils |
 |---|---|
-| Système d'analyse | Ubuntu — poste d'analyse Linux, isolé des fichiers bruts |
+| Système d'analyse | Ubuntu poste d'analyse Linux, isolé des fichiers bruts |
 | Document & macro | `oletools` (`oleid`, `olevba`), Python 3, CyberChef |
 | Image & métadonnées | `file`, `unzip`, `exiftool`, `steghide` |
 | Audio | Audacity (vue spectrogramme) |
 
-> ⚠️ **Manipulation responsable.** Le `.docm` contient une macro active et les images un payload stéganographié. Toute l'analyse est **statique** — les fichiers ne sont **jamais exécutés ni ouverts** dans une suite bureautique — et se fait sur des copies. Les fichiers bruts ne sont pas redistribués dans ce dépôt.
+> ⚠️ **Manipulation responsable.** Le `.docm` contient une macro active et les images un payload stéganographié. Toute l'analyse est **statique** les fichiers ne sont **jamais exécutés ni ouverts** dans une suite bureautique et se fait sur des copies. Les fichiers bruts ne sont pas redistribués dans ce dépôt.
 
 ---
 
@@ -33,7 +33,7 @@ oleid YearlyBonus.docm       # détection rapide d'indicateurs de risque
 
 ![oleid signale des macros VBA suspectes (risque HIGH)](screenshots/01-exo1-oleid.png)
 
-### 2. Extraction de la macro — sans jamais l'exécuter
+### 2. Extraction de la macro sans jamais l'exécuter
 
 ```bash
 olevba YearlyBonus.docm
@@ -41,8 +41,8 @@ olevba YearlyBonus.docm
 
 `olevba` lit le code VBA à froid (analyse statique). Le code révèle la logique de dissimulation :
 
-- `AutoOpen()` — s'exécute à l'ouverture du document et affiche « You have been hacked! », puis appelle `doShenanigans`.
-- `doShenanigans()` — construit un tableau de **101 octets**, puis **ajoute 3 à chaque octet** avant de le convertir en texte.
+- `AutoOpen()` s'exécute à l'ouverture du document et affiche « You have been hacked! », puis appelle `doShenanigans`.
+- `doShenanigans()` construit un tableau de **101 octets**, puis **ajoute 3 à chaque octet** avant de le convertir en texte.
 
 ![olevba : code de la macro (doShenanigans + AutoOpen)](screenshots/02-exo1-olevba-macro.png)
 
@@ -86,7 +86,7 @@ flag{such_m4cr0_much_w0w!}
 
 ### Ce que j'ai appris
 - Un `.docm` / `.pptm` / `.xlsm` est un document **à macros** : `oleid` pour le triage, `olevba` pour lire le VBA **sans l'exécuter**.
-- L'obfuscation peut être **multi-couches** : une partie visible dans le code (`+3`), une partie cachée (`+7`) retrouvée par **analyse de fréquence** — la même technique que le cassage d'un chiffre de César.
+- L'obfuscation peut être **multi-couches** : une partie visible dans le code (`+3`), une partie cachée (`+7`) retrouvée par **analyse de fréquence** la même technique que le cassage d'un chiffre de César.
 - Réécrire la logique d'un malware en Python est plus sûr et plus pédagogique que de l'exécuter.
 
 ---
@@ -145,13 +145,13 @@ cat top_secret.txt
 
 ### Résultat
 - **Information top secrète** : *« I have obtained information regarding a top secret mission… »* (`top_secret.txt`).
-- **Source** : Michael Scott — Van Nuys, Los Angeles (34.2109, −118.4364).
+- **Source** : Michael Scott Van Nuys, Los Angeles (34.2109, −118.4364).
 
 ### Ce que j'ai appris
 - Les documents Office = archives ZIP : on explore `ppt/media/` (ou `word/media/`) sans ouvrir le fichier.
 - **Repérer l'anomalie** : au milieu de 50 fichiers identiques, celui qui diffère par son format est le bon.
 - Deux canaux de dissimulation distincts : les **métadonnées** (`exiftool` → nom + GPS) et le **payload stéganographié** (`steghide`).
-- **Réserve forensique** : une métadonnée EXIF se falsifie en quelques secondes — c'est une **piste**, pas une preuve.
+- **Réserve forensique** : une métadonnée EXIF se falsifie en quelques secondes c'est une **piste**, pas une preuve.
 
 ---
 
