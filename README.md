@@ -10,7 +10,7 @@ Chaque lab est traité comme une véritable investigation : reconstitution de la
 |---|---|---|---|---|
 | 01 | [Fondamentaux Linux CLI](./Lab-01-linux-fundamentals/) | Commandes de base (recherche, hachage, identification de type) + récupération d'un PNG corrompu via magic bytes | find, grep, hachage MD5/SHA1, file, strings, hexedit, magic bytes | ✅ |
 | 02 | — | — | — | ⏳ |
-| 03 | — | — | — | ⏳ |
+| 03 | [Analyse de documents & stéganographie](./Lab-03-document-stego/) | Macro VBA malveillante, image cachée dans un PowerPoint (métadonnées + OSINT GPS), stéganographie audio | olevba/oletools, désobfuscation VBA, OOXML/unzip, exiftool, steghide, CyberChef, Audacity | ✅ |
 | 04 | [Applications Web & journaux WAF](./Lab-04-web-waf-logs/) | Compromission d'un serveur Apache via LFI, RCE et SQLi ; analyse croisée `access.log` / `error.log` / `modsec_audit.log` | Path Traversal, Remote Command Execution, SQL Injection, ModSecurity/OWASP CRS, Docker | ✅ |
 | 05 | — | — | — | ⏳ |
 | 06 | — | — | — | ⏳ |
