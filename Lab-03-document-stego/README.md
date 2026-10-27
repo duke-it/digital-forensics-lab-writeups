@@ -1,62 +1,102 @@
-# Lab 03 — Analyse de documents & Stéganographie
+# Lab 03 : Analyse de documents et stéganographie
 
 > Write-up de la série sur le dépôt [vonderchild/digital-forensics-lab](https://github.com/vonderchild/digital-forensics-lab).
-> Chaque exercice est traité comme une investigation : démarche, outils et raisonnement pas seulement la réponse.
+> Chaque exercice est traité comme une investigation : démarche, outils et raisonnement, pas seulement la réponse.
 
-Ce lab couvre les documents piégés et la stéganographie sous trois formes : une **macro VBA malveillante**, une **image dissimulée dans un PowerPoint** (métadonnées + payload caché), et un **message caché dans un fichier audio**.
+## L'énoncé
 
-## Environnement & outils
+> **Exercice 1.** Une attaque par phishing a été signalée : un employé a reçu par mail un document Word piégé, en apparence envoyé par une source de confiance. En l'ouvrant, il a déclenché les macros qu'il contenait, et l'attaquant a pris la main sur son poste. Un secret révélant l'identité de l'attaquant est caché dans le code de la macro. Mission : analyser ce code et extraire le secret, au format `flag{s0me_str1ng}`. Fichier : `YearlyBonus.docm`.
+>
+> **Exercice 2.** Une taupe au sein du gouvernement a transmis une information top secrète à un espion. Elle l'a cachée par stéganographie dans une image, que l'espion a ensuite collée dans un PowerPoint, recouverte de nombreuses images aléatoires. Mission : extraire la première image, l'information top secrète, ainsi que le nom et la localisation de la source. Fichier : `Presentation.pptx`.
+>
+> **Exercice 3.** À partir du fichier audio fourni, trouver comment afficher son spectrogramme dans Audacity et récupérer le flag. Fournir une capture. Fichier : `super_secret_audio.wav`.
+
+## Introduction
+
+Un document Office, une image ou un fichier audio ont l'air inoffensifs. C'est justement ce qui en fait de bons vecteurs : un document peut embarquer du code qui s'exécute à l'ouverture, une image peut transporter un fichier caché, un son peut contenir un message qu'aucune oreille n'entendra.
+
+Ce lab explore ces trois façons de dissimuler de l'information. Le premier exercice est une **macro VBA malveillante** dont le secret est obfusqué sur deux couches. Le deuxième cache une **image porteuse** au milieu de cinquante leurres dans un PowerPoint, avec des indices dans ses métadonnées et un fichier dissimulé à l'intérieur. Le troisième dessine un **message dans les fréquences** d'un fichier audio.
+
+## Rappels : les notions du lab
+
+**Les macros VBA.** Les documents Office peuvent contenir du code écrit en VBA (Visual Basic for Applications). Un fichier dont l'extension finit par `m` (`.docm`, `.xlsm`, `.pptm`) est un document « à macros ». Certaines fonctions se lancent toutes seules, comme `AutoOpen()` à l'ouverture du document : c'est ce qui en fait un vecteur de phishing redoutable.
+
+**L'analyse statique.** Analyser un fichier piégé de façon statique, c'est lire son code **sans jamais l'exécuter**. C'est la règle de base face à un document suspect : on ne l'ouvre pas dans Word, on l'inspecte avec des outils dédiés.
+
+**Le format OOXML.** Depuis Office 2007, un `.docx`, `.pptx` ou `.xlsx` est en réalité une **archive ZIP** qui contient des fichiers XML et des médias. On peut donc l'ouvrir avec `unzip` et explorer son contenu comme un simple dossier. Les images d'un PowerPoint se trouvent dans `ppt/media/`.
+
+**Les métadonnées EXIF.** Une photo embarque souvent des informations cachées : appareil utilisé, date, auteur, et parfois coordonnées GPS. Elles sont précieuses pour une enquête, mais se falsifient très facilement : c'est une piste, jamais une preuve à elle seule.
+
+**La stéganographie.** C'est l'art de cacher un message dans un support anodin, de sorte que personne ne soupçonne qu'il y a quelque chose à chercher. Le choix de l'outil dépend du format :
+
+| Format du support | Outil adapté |
+|---|---|
+| JPEG, BMP, WAV, AU | `steghide` |
+| PNG, BMP | `zsteg` |
+| Audio (message dessiné dans le son) | Audacity ou Sonic Visualiser, vue spectrogramme |
+
+**L'analyse de fréquence.** Dans un texte anglais, certains caractères reviennent bien plus souvent que d'autres, l'espace en tête. Si un texte a été décalé d'une valeur fixe (comme dans un chiffre de César), le caractère le plus fréquent du texte chiffré correspond très probablement à l'espace. L'écart entre les deux donne le décalage.
+
+## La boîte à outils
 
 | Étape | Outils |
 |---|---|
-| Système d'analyse | Ubuntu poste d'analyse Linux, isolé des fichiers bruts |
-| Document & macro | `oletools` (`oleid`, `olevba`), Python 3, CyberChef |
-| Image & métadonnées | `file`, `unzip`, `exiftool`, `steghide` |
+| Système d'analyse | Ubuntu, poste isolé des fichiers bruts |
+| Document et macro | `oletools` (`oleid`, `olevba`), Python 3, CyberChef |
+| Image et métadonnées | `file`, `unzip`, `exiftool`, `steghide` |
 | Audio | Audacity (vue spectrogramme) |
 
-> ⚠️ **Manipulation responsable.** Le `.docm` contient une macro active et les images un payload stéganographié. Toute l'analyse est **statique** les fichiers ne sont **jamais exécutés ni ouverts** dans une suite bureautique et se fait sur des copies. Les fichiers bruts ne sont pas redistribués dans ce dépôt.
+> **Manipulation responsable.** Le `.docm` contient une macro active et l'image porte un fichier caché. Toute l'analyse est **statique** : les fichiers ne sont jamais exécutés ni ouverts dans une suite bureautique, et le travail se fait sur des copies.
+
+## Le fil du lab, en une phrase
+
+On lit une macro piégée sans l'exécuter et on casse son obfuscation par analyse de fréquence, on retrouve une image porteuse par son format, on lui fait cracher ses métadonnées puis son fichier caché, et on finit par regarder un son au lieu de l'écouter.
 
 ---
 
-## Exercice 1 — Macro VBA malveillante (`YearlyBonus.docm`)
+## Résolution, exercice par exercice
 
-**Scénario.** Un employé a ouvert un document Word piégé reçu par phishing. Un secret révélant l'identité de l'attaquant est dissimulé dans le code de la macro. Format attendu : `flag{...}`.
+## Exercice 1 : la macro VBA malveillante (`YearlyBonus.docm`)
 
-### 1. Triage initial
+### Étape 1 : le triage
+
+Premier réflexe face à un document suspect : savoir ce qu'il contient, sans l'ouvrir.
 
 ```bash
-file YearlyBonus.docm        # Microsoft Word 2007+
-oleid YearlyBonus.docm       # détection rapide d'indicateurs de risque
+file YearlyBonus.docm
+oleid YearlyBonus.docm
 ```
 
-`oleid` classe d'emblée le fichier comme **risque élevé** : macros VBA présentes et mots-clés suspects.
+`file` confirme un document Word 2007 et plus récent. `oleid` passe le fichier au crible et le classe tout de suite en **risque élevé** : il contient des macros VBA et des mots clés suspects.
 
-![oleid signale des macros VBA suspectes (risque HIGH)](screenshots/01-exo1-oleid.png)
+![oleid signale des macros VBA suspectes](screenshots/01-exo1-oleid.png)
 
-### 2. Extraction de la macro sans jamais l'exécuter
+> Réflexe : `oleid` d'abord, pour savoir en dix secondes s'il y a des macros et si elles sont inquiétantes.
+
+### Étape 2 : lire la macro sans l'exécuter
 
 ```bash
 olevba YearlyBonus.docm
 ```
 
-`olevba` lit le code VBA à froid (analyse statique). Le code révèle la logique de dissimulation :
+`olevba` extrait le code VBA à froid. Deux fonctions ressortent :
 
-- `AutoOpen()` s'exécute à l'ouverture du document et affiche « You have been hacked! », puis appelle `doShenanigans`.
-- `doShenanigans()` construit un tableau de **101 octets**, puis **ajoute 3 à chaque octet** avant de le convertir en texte.
+* `AutoOpen()` se lance à l'ouverture du document, affiche « You have been hacked! », puis appelle `doShenanigans`.
+* `doShenanigans()` construit un tableau de **101 octets**, **ajoute 3 à chacun**, puis convertit le tout en texte.
 
-![olevba : code de la macro (doShenanigans + AutoOpen)](screenshots/02-exo1-olevba-macro.png)
+![olevba affiche le code de la macro](screenshots/02-exo1-olevba-macro.png)
 
-Le texte obtenu après ce `+3` reste **illisible** : il existe une **seconde couche** d'encodage, absente du code, qu'il faut retrouver.
+Je refais mentalement le calcul : même après ce `+3`, le texte reste illisible. Il existe donc une **seconde couche** d'encodage, qui n'apparaît nulle part dans le code. C'est elle qu'il faut retrouver.
 
-### 3. Décodage — Méthode A : réécriture en Python (analyse statique)
+### Étape 3 : décoder, première méthode avec Python
 
-Plutôt que d'exécuter la macro, j'en **réécris la logique** en Python, ce qui est sûr, reproductible et vérifiable. J'extrais d'abord les 101 octets du code en une commande :
+Plutôt que de lancer la macro, je réécris sa logique en Python. C'est sûr, reproductible, et ça oblige à comprendre ce que fait le code. J'extrais d'abord les 101 octets en une commande :
 
 ```bash
 olevba YearlyBonus.docm | grep -oP 'byteArray\(\d+\) = \K\d+' > bytes.txt
 ```
 
-Le script applique la couche 1 (`+3`, comme la macro), puis **déduit la couche 2 par analyse de fréquence** : dans une phrase anglaise le caractère le plus fréquent est l'espace (ASCII 32). Le caractère le plus fréquent après `+3` étant `\x19` (ASCII 25), le décalage manquant vaut `32 − 25 = 7`. Décalage total : **+10**.
+Le script applique ensuite la couche connue (`+3`, comme la macro), puis **déduit la couche manquante par analyse de fréquence**. Après le `+3`, le caractère le plus fréquent est `\x19`, soit 25 en ASCII. Dans une phrase anglaise, le caractère le plus fréquent est l'espace, soit 32. Le décalage manquant vaut donc `32 − 25 = 7`, pour un décalage total de **+10**.
 
 ```python
 from collections import Counter
@@ -70,52 +110,51 @@ print(message)
 
 > Le script complet et commenté est fourni : [`decode_yearlybonus.py`](./decode_yearlybonus.py).
 
-![Sortie du script : le flag](screenshots/03-exo1-decode-python.png)
+![Le script affiche le message décodé et le flag](screenshots/03-exo1-decode-python.png)
 
-### 4. Décodage — Méthode B : CyberChef (vérification visuelle)
+### Étape 4 : décoder, seconde méthode avec CyberChef
 
-La même attaque, sans code, pour confirmer : `From Decimal` → `ADD 3` → `ADD 7`. L'opération **Frequency distribution** sert à *voir* le décalage : le pic de fréquence confirme le caractère dominant et donc le `+7` à appliquer.
+Pour confirmer sans code, je rejoue la même chose dans CyberChef : `From Decimal`, puis `ADD 3`, puis `ADD 7`. L'opération **Frequency distribution** permet de *voir* le décalage : le pic de fréquence montre le caractère dominant, et donc la valeur à ajouter.
 
-![Recette CyberChef : From Decimal → ADD 3 → ADD 7](screenshots/04-exo1-cyberchef.png)
+![Recette CyberChef : From Decimal, ADD 3, ADD 7](screenshots/04-exo1-cyberchef.png)
 
-### Résultat
+Les deux méthodes donnent le même résultat :
 
 ```
 flag{such_m4cr0_much_w0w!}
 ```
 
-### Ce que j'ai appris
-- Un `.docm` / `.pptm` / `.xlsm` est un document **à macros** : `oleid` pour le triage, `olevba` pour lire le VBA **sans l'exécuter**.
-- L'obfuscation peut être **multi-couches** : une partie visible dans le code (`+3`), une partie cachée (`+7`) retrouvée par **analyse de fréquence** la même technique que le cassage d'un chiffre de César.
-- Réécrire la logique d'un malware en Python est plus sûr et plus pédagogique que de l'exécuter.
+> Réflexe : quand un texte reste illisible après une transformation connue, chercher une seconde couche. L'analyse de fréquence est souvent la clé d'un simple décalage.
 
----
+## Exercice 2 : l'image cachée dans un PowerPoint (`Presentation.pptx`)
 
-## Exercice 2 — Image dissimulée dans un PowerPoint (`Presentation.pptx`)
+### Étape 1 : ouvrir le PowerPoint comme une archive
 
-**Scénario.** Une taupe a transmis à un espion une image contenant une information top secrète, cachée dans un PowerPoint sous de nombreuses images-leurres. Mission : extraire la **première image**, l'**information top secrète**, ainsi que le **nom et la localisation** de la source.
-
-### 1. Un `.pptx` est une archive ZIP
-
-Le format OOXML stocke tout dans un conteneur ZIP. On l'extrait donc sans PowerPoint :
+Un `.pptx` est un ZIP. Pas besoin de PowerPoint pour voir ce qu'il contient :
 
 ```bash
 mkdir pptx_extract && cd pptx_extract
 unzip ../Presentation.pptx
-ls ppt/media/            # 51 images : image1 … image51
+ls ppt/media/
 ```
 
-### 2. Repérer l'intrus par son format
+Le dossier `ppt/media/` contient **51 images**, de `image1` à `image51`. L'image cherchée est quelque part là dedans, noyée parmi les leurres.
+
+### Étape 2 : repérer l'intrus par son format
+
+Plutôt que d'ouvrir les 51 images une par une, je demande à `file` de toutes les identifier d'un coup :
 
 ```bash
 file ppt/media/image*
 ```
 
-Toutes les images-leurres sont des **PNG 800×600**… sauf une : `image1.jpg`, le seul **JPEG** (800×450). C'est la porteuse.
+![file révèle que image1.jpg est le seul JPEG](screenshots/05-exo2-file-intrus.png)
 
-![file : image1.jpg est le seul JPEG parmi 50 PNG](screenshots/05-exo2-file-intrus.png)
+Toutes les images sont des **PNG de 800 × 600**, sauf une : `image1.jpg`, le seul **JPEG**, en 800 × 450. C'est notre porteuse.
 
-### 3. Métadonnées → nom + localisation de la source
+> Réflexe : face à un grand nombre de fichiers semblables, chercher celui qui diffère. L'anomalie est presque toujours la piste.
+
+### Étape 3 : les métadonnées, pour le nom et la localisation
 
 Premier réflexe sur toute image : `exiftool`.
 
@@ -123,77 +162,89 @@ Premier réflexe sur toute image : `exiftool`.
 exiftool image1.jpg
 ```
 
-- **Artist : `Michael Scott`** → le nom de la source.
-- **GPS : `34°12'39.33"N 118°26'11.15"W`** → sa localisation.
+![exiftool affiche l'auteur et les coordonnées GPS](screenshots/06-exo2-exiftool-gps.png)
 
-![exiftool : Artist et coordonnées GPS](screenshots/06-exo2-exiftool-gps.png)
+Deux champs répondent directement à la mission :
 
-Conversion en degrés décimaux et géolocalisation (`34.2109, -118.4364`, **Nord/Ouest** → États-Unis) : la source se situe à **Van Nuys, Los Angeles, Californie**.
+* **Artist : `Michael Scott`**, le nom de la source.
+* **GPS : `34°12'39.33"N 118°26'11.15"W`**, sa localisation.
 
-![Géolocalisation GPS : Van Nuys, Los Angeles](screenshots/07-exo2-geoloc.png)
+Je convertis ces coordonnées en degrés décimaux (`34.2109, -118.4364`, Nord et Ouest, donc les États-Unis) et je les place sur une carte : la source se trouve à **Van Nuys, Los Angeles, en Californie**.
 
-### 4. Le payload caché → steghide (car JPEG)
+![Géolocalisation des coordonnées GPS à Van Nuys](screenshots/07-exo2-geoloc.png)
 
-Le format choisit l'outil : pour un **JPEG**, c'est `steghide` (et non `zsteg`, réservé au PNG/BMP).
+### Étape 4 : extraire le fichier caché
+
+Reste l'information top secrète, cachée par stéganographie. Ici, le format choisit l'outil : pour un **JPEG**, c'est `steghide` (et non `zsteg`, qui ne travaille que sur le PNG et le BMP).
 
 ```bash
-steghide extract -sf image1.jpg      # passphrase vide
+steghide extract -sf image1.jpg
 cat top_secret.txt
 ```
 
+La passphrase est vide : un simple appui sur Entrée suffit.
+
 ![steghide extrait top_secret.txt](screenshots/08-exo2-steghide.png)
 
-### Résultat
-- **Information top secrète** : *« I have obtained information regarding a top secret mission… »* (`top_secret.txt`).
-- **Source** : Michael Scott Van Nuys, Los Angeles (34.2109, −118.4364).
+`steghide` extrait `top_secret.txt`, qui contient le message : *« I have obtained information regarding a top secret mission… »*
 
-### Ce que j'ai appris
-- Les documents Office = archives ZIP : on explore `ppt/media/` (ou `word/media/`) sans ouvrir le fichier.
-- **Repérer l'anomalie** : au milieu de 50 fichiers identiques, celui qui diffère par son format est le bon.
-- Deux canaux de dissimulation distincts : les **métadonnées** (`exiftool` → nom + GPS) et le **payload stéganographié** (`steghide`).
-- **Réserve forensique** : une métadonnée EXIF se falsifie en quelques secondes c'est une **piste**, pas une preuve.
+> Réflexe : une image suspecte cache souvent deux choses à deux endroits différents. Les métadonnées d'un côté (`exiftool`), le contenu caché de l'autre (`steghide` ou `zsteg` selon le format).
 
----
+## Exercice 3 : la stéganographie audio (`super_secret_audio.wav`)
 
-## Exercice 3 — Stéganographie audio (`super_secret_audio.wav`)
-
-**Scénario.** Un flag est dissimulé dans un fichier audio ; il faut le récupérer via le spectrogramme et fournir une capture.
-
-### Démarche
+### Étape 1 : identifier le fichier
 
 ```bash
-file super_secret_audio.wav          # WAVE, PCM 16 bits, stéréo, 22050 Hz
+file super_secret_audio.wav
 audacity super_secret_audio.wav
 ```
 
-Dans Audacity : menu de la piste → **Spectrogramme** (au lieu de *Forme d'onde*). Le message n'est pas dans les octets, il est **dessiné dans les fréquences**. La forme d'onde montrait d'ailleurs des salves régulières, signature typique d'un texte spectral.
+`file` confirme un fichier WAVE, PCM 16 bits, stéréo, à 22050 Hz. À l'écoute, rien d'intelligible. Mais dans la vue habituelle (la forme d'onde), on remarque des salves régulières tout au long du fichier : c'est souvent le signe qu'un texte a été dessiné dans le spectre.
 
-### Résultat
+### Étape 2 : passer en vue spectrogramme
+
+Dans Audacity, j'ouvre le menu de la piste et je remplace **Forme d'onde** par **Spectrogramme**. Cette vue affiche les fréquences présentes à chaque instant. Le message n'est pas dans les octets du fichier : il est **dessiné dans les fréquences**, et il apparaît en toutes lettres.
+
+![Le spectrogramme révèle le flag](screenshots/09-exo3-spectrogramme.png)
 
 ```
 flag{h1dd3n_1n_th3_n01s3}
 ```
 
-![Spectrogramme révélant le flag](screenshots/09-exo3-spectrogramme.png)
-
-### Ce que j'ai appris
-- Certains messages ne se **lisent** pas, ils se **voient** : le spectrogramme (Audacity / Sonic Visualiser) est le réflexe pour la stéganographie audio.
-- La vue *forme d'onde* peut déjà trahir la présence d'un message (salves régulières le long du temps).
+> Réflexe : face à un fichier audio suspect, le spectrogramme est le premier geste. Certains messages ne s'écoutent pas, ils se regardent.
 
 ---
 
-## Récapitulatif des techniques
+## Récapitulatif
+
+| Exercice | Ce qui était demandé | Réponse |
+|:---:|---|---|
+| 1 | Le secret caché dans la macro | `flag{such_m4cr0_much_w0w!}` |
+| 2 | La première image | `image1.jpg`, le seul JPEG parmi 51 images |
+| 2 | L'information top secrète | `top_secret.txt` : *« I have obtained information regarding a top secret mission… »* |
+| 2 | Le nom et la localisation de la source | Michael Scott, à Van Nuys, Los Angeles (34.2109, −118.4364) |
+| 3 | Le flag caché dans l'audio | `flag{h1dd3n_1n_th3_n01s3}` |
 
 | Exercice | Vecteur | Outils clés | Concept |
-|---|---|---|---|
-| 1 | Macro VBA (`.docm`) | `oleid`, `olevba`, Python, CyberChef | Analyse statique + désobfuscation multi-couches (analyse de fréquence) |
-| 2 | Image dans un `.pptx` | `unzip`, `file`, `exiftool`, `steghide` | OOXML = ZIP · anomalie de format · métadonnées + OSINT GPS · stégano JPEG |
+|:---:|---|---|---|
+| 1 | Macro VBA (`.docm`) | `oleid`, `olevba`, Python, CyberChef | Analyse statique, obfuscation sur deux couches, analyse de fréquence |
+| 2 | Image dans un `.pptx` | `unzip`, `file`, `exiftool`, `steghide` | OOXML est un ZIP, anomalie de format, métadonnées et GPS, stéganographie JPEG |
 | 3 | Audio (`.wav`) | Audacity | Stéganographie spectrale |
+
+### Ce que j'ai appris
+
+* Un document à macros (`.docm`, `.pptm`, `.xlsm`) s'analyse **sans l'ouvrir** : `oleid` pour le triage, `olevba` pour lire le code.
+* Une obfuscation peut avoir **plusieurs couches**, dont une absente du code. L'analyse de fréquence permet de la retrouver, exactement comme pour casser un chiffre de César.
+* Réécrire la logique d'un malware en Python est plus sûr et plus formateur que de l'exécuter.
+* Les documents Office sont des **archives ZIP** : on explore `ppt/media/` ou `word/media/` directement.
+* Le **format choisit l'outil** : `steghide` pour le JPEG, `zsteg` pour le PNG.
+* Une métadonnée EXIF se falsifie en quelques secondes : c'est une **piste**, pas une preuve.
+* En audio, le **spectrogramme** est le premier réflexe.
 
 ## Note éthique
 
-Les artefacts bruts du lab (document à macro, images porteuses, audio) ne sont **pas redistribués** dans ce dépôt ; seules les captures d'analyse le sont. L'analyse a été menée en **statique**, sans exécution des fichiers piégés.
+Les artefacts bruts du lab (document à macro, image porteuse, fichier audio) ne sont pas redistribués dans ce dépôt ; seules les captures d'analyse et le script de décodage le sont. L'analyse a été menée de façon statique, sans jamais exécuter les fichiers piégés.
 
 ## Source
 
-Lab issu de [vonderchild/digital-forensics-lab — Lab 03](https://github.com/vonderchild/digital-forensics-lab/tree/main/Lab%2003).
+Lab issu de [vonderchild/digital-forensics-lab, Lab 03](https://github.com/vonderchild/digital-forensics-lab/tree/main/Lab%2003).
