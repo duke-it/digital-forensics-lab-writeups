@@ -11,8 +11,9 @@ Ma règle pour chaque lab : ne pas me contenter de trouver la réponse, mais **r
 | 01 | [**Fondamentaux Linux (CLI)**](./Lab-01-linux-fundamentals/) | `find`, `grep`, hachage MD5/SHA1, `file`, `strings`, hexedit, magic bytes |
 | 03 | [**Documents & stéganographie**](./Lab-03-document-stego/) | `olevba`, désobfuscation VBA, OOXML, `exiftool`, `steghide`, CyberChef, Audacity |
 | 04 | [**Applications web & journaux WAF**](./Lab-04-web-waf-logs/) | Path Traversal, RCE, SQL Injection, ModSecurity / OWASP CRS, Docker |
+| 05 | [**Forensique du trafic réseau**](./Lab-05-network-forensics/) | Analyse d'une capture pcap : brute force FTP, pivot MySQL, RCE web, reverse shell, porte dérobée |
 
-Les labs 02, puis 05 à 10, arrivent au fil de ma progression.
+Les labs 02, puis 06 à 10, arrivent au fil de ma progression.
 
 ## Comment je travaille
 
